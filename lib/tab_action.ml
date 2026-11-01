@@ -31,6 +31,9 @@ let argument_of_action = function
   | Copy_tab_ids target -> "copy:" ^ string_of_tab_target target
   | Create_local_session name -> "new:" ^ name
 
+(* `rex new` would read a leading "-" as a flag. *)
+let is_valid_session_name name = name <> "" && name.[0] <> '-'
+
 let action_of_argument argument =
   match String.index_opt argument ':' with
   | None -> None
@@ -42,7 +45,7 @@ let action_of_argument argument =
       | "go" -> with_target (fun target -> Go_to_tab target)
       | "close" -> with_target (fun target -> Close_tab target)
       | "copy" -> with_target (fun target -> Copy_tab_ids target)
-      | "new" when rest <> "" -> Some (Create_local_session rest)
+      | "new" when is_valid_session_name rest -> Some (Create_local_session rest)
       | _ -> None)
 
 (* The Rex app is a client of every host it shows, so ask the tab's own server to

@@ -31,8 +31,12 @@ let preview_line_count () = int_setting "preview_lines" ~default:70
 (* An index older than this triggers a background refresh. *)
 let stale_after_seconds () = float_setting "refresh_seconds" ~default:5.
 
-(* A refresh lock older than this belongs to a refresh that died. *)
+(* An empty refresh lock older than this belongs to a refresh that never started. *)
 let refresh_lock_expires_after_seconds = 60.
+
+(* A lock whose owner PID is alive is trusted for this long, in case the PID was
+   reused by another process after the refresh died. *)
+let refresh_lock_owner_trusted_seconds = 600.
 
 (* Remote hosts send whole scrollbacks, so give them time. *)
 let host_snapshot_timeout_seconds = 30.

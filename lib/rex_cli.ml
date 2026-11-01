@@ -13,9 +13,10 @@ let rex_executable_path () =
       let bundled = bundled_rex_path () in
       if Sys.file_exists bundled then bundled else "rex"
 
+let rex_arguments host arguments = Host.server_flags_of_host host @ arguments
+
 let run_rex ?timeout_seconds host arguments =
-  Process.run ?timeout_seconds (rex_executable_path ())
-    (Host.server_flags_of_host host @ arguments)
+  Process.run ?timeout_seconds (rex_executable_path ()) (rex_arguments host arguments)
 
 let error_message_of_result (result : Process.result) =
   if result.timed_out then "rex timed out"

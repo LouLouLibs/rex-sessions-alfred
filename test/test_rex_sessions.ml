@@ -113,7 +113,8 @@ let test_action_round_trip () =
       Create_local_session "notes: draft";
     ];
   check "garbage is rejected" (Tab_action.action_of_argument "go:only-one-part" = None);
-  check "empty session name is rejected" (Tab_action.action_of_argument "new:" = None)
+  check "empty session name is rejected" (Tab_action.action_of_argument "new:" = None);
+  check "flag-like session name is rejected" (Tab_action.action_of_argument "new:-x foo" = None)
 
 let test_index_round_trip () =
   let tab = make_tab ~host:(Host.Remote "devbox") ~terminal_title:"Claude Code" "notes" "drafts" in
@@ -154,7 +155,30 @@ let test_program_icons () =
   check_string "user alias" ~expected:"claude"
     (glyph ~aliases:(Program_icon.user_aliases_of_setting " vm-launcher = claude, x=" @ Program_icon.glyph_of_program_alias) "vm-launcher")
 
+let test_process_runner () =
+  let finished = ref [] in
+  Process.run_all ~timeout_seconds:1.
+    [
+      ("slow", "/bin/sh", [ "-c"; "sleep 0.4; echo slow" ]);
+      ("fast", "/bin/sh", [ "-c"; "echo fast" ]);
+      ("hung", "/bin/sh", [ "-c"; "sleep 30" ]);
+      ("missing", "/nonexistent/program", []);
+      ("big", "/bin/sh", [ "-c"; "head -c 300000 /dev/zero; echo oops >&2" ]);
+    ]
+    ~on_finished:(fun key result -> finished := (key, result) :: !finished);
+  let order = List.rev_map fst !finished in
+  let result key = List.assoc key !finished in
+  check_string "results arrive as children finish" ~expected:"missing fast big slow hung"
+    (String.concat " " order);
+  check_string "output captured" ~expected:"fast\n" (result "fast").stdout;
+  check "hung child is killed at the deadline"
+    ((result "hung").timed_out && (result "hung").exit_code = 124);
+  check "missing program is 127" ((result "missing").exit_code = 127);
+  check "large output doesn't stall"
+    (String.length (result "big").stdout = 300000 && (result "big").stderr = "oops\n")
+
 let () =
+  test_process_runner ();
   test_fuzzy_match ();
   test_program_icons ();
   test_ranking ();

@@ -123,6 +123,19 @@ let installed_rex_app () =
 
 let extraction_stamp_path () = Filename.concat (icons_directory ()) ".extracted-from"
 
+(* After a failure (say the helper is quarantined), wait a day before trying again
+   with the same Rex, rather than paying for the attempt on every refresh. *)
+let failed_stamp_path () = Filename.concat (Settings.cache_directory ()) "icons-failed"
+
+let retry_failed_extraction_after_seconds = 86400.
+
+let recently_failed_for stamp =
+  match Unix.stat (failed_stamp_path ()) with
+  | exception Unix.Unix_error _ -> false
+  | stats ->
+      Unix.gettimeofday () -. stats.st_mtime < retry_failed_extraction_after_seconds
+      && In_channel.with_open_bin (failed_stamp_path ()) In_channel.input_all = stamp
+
 let read_file_or_empty path =
   try In_channel.with_open_bin path In_channel.input_all with Sys_error _ -> ""
 
@@ -134,7 +147,8 @@ let ensure_icons_extracted () =
       | exception Unix.Unix_error _ -> Activity_log.log_line "icons: no glyph catalog in %s" app
       | catalog ->
           let stamp = Printf.sprintf "%s %.0f %d" app catalog.st_mtime catalog.st_size in
-          if read_file_or_empty (extraction_stamp_path ()) <> stamp then begin
+          if read_file_or_empty (extraction_stamp_path ()) <> stamp && not (recently_failed_for stamp)
+          then begin
             let helper = Filename.concat (Settings.workflow_directory ()) "extract_rex_icons" in
             let result = Process.run ~timeout_seconds:60. helper [ app; icons_directory () ] in
             if Process.succeeded result then begin
@@ -142,5 +156,9 @@ let ensure_icons_extracted () =
                   output_string channel stamp);
               Activity_log.log_line "icons: %s" (String.trim result.stdout)
             end
-            else Activity_log.log_line "icons: extraction failed: %s" (String.trim result.stderr)
+            else begin
+              Cache_index.write_file_atomically (failed_stamp_path ()) stamp;
+              Activity_log.log_line "icons: extraction failed: %s"
+                (if result.timed_out then "timed out" else String.trim result.stderr)
+            end
           end)

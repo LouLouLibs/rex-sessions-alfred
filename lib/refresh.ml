@@ -1,6 +1,6 @@
 (* Snapshot every host's sessions and tabs into the cache index and preview files.
-   Hosts are snapshotted in parallel, one domain each: a remote host takes seconds
-   because Rex sends whole scrollbacks, and the local host shouldn't wait for it. *)
+   Hosts are snapshotted in parallel: a remote host takes seconds because Rex sends
+   whole scrollbacks, and no host should wait for a slower one. *)
 
 let remote_hosts_of_hosts_json json =
   List.filter_map
@@ -25,8 +25,8 @@ let configured_hosts () =
   in
   Host.Local :: remote_hosts
 
-let run_snapshot_script host =
-  Rex_cli.run_rex ~timeout_seconds:Settings.host_snapshot_timeout_seconds host
+let snapshot_script_arguments host =
+  Rex_cli.rex_arguments host
     [
       "do";
       Settings.snapshot_script_path ();
@@ -39,11 +39,14 @@ let snapshot_json_of_script_output output =
   | `String inner -> Yojson.Safe.from_string inner
   | json -> json
 
-let file_name_safe_of_id id = String.map (fun character -> if character = ':' then '_' else character) id
+let file_name_safe_of_id id =
+  String.map (fun character -> if character = ':' || character = '/' then '_' else character) id
 
 let preview_path_of_window host window_id =
   Filename.concat (Settings.previews_directory ())
-    (Printf.sprintf "%s_%s.html" (Host.label_of_host host) (file_name_safe_of_id window_id))
+    (Printf.sprintf "%s_%s.html"
+       (file_name_safe_of_id (Host.label_of_host host))
+       (file_name_safe_of_id window_id))
 
 let preview_page_template =
   {|<!DOCTYPE html><html><head><meta charset="utf-8"><style>
@@ -66,14 +69,17 @@ let preview_page_of_tab ~heading ~subheading ~screen_html =
       "</div></body></html>";
     ]
 
-(* Rewriting an unchanged preview would make an open Quick Look panel flicker. *)
+(* Rewriting an unchanged preview would make an open Quick Look panel flicker. A preview
+   that can't be written (disk full, say) is logged and skipped, not fatal. *)
 let write_file_if_changed path contents =
   let unchanged =
     match In_channel.with_open_bin path In_channel.input_all with
     | existing -> existing = contents
     | exception Sys_error _ -> false
   in
-  if not unchanged then Cache_index.write_file_atomically path contents
+  if not unchanged then
+    try Cache_index.write_file_atomically path contents
+    with Sys_error message -> Activity_log.log_line "preview not written: %s" message
 
 let foreground_process_of_json json =
   {
@@ -170,22 +176,6 @@ let host_snapshot_of_script_result ~previous host (result : Process.result) =
     | exception (Yojson.Json_error message | Yojson.Safe.Util.Type_error (message, _)) ->
         unreachable ("unreadable snapshot: " ^ message)
 
-(* Domains only run the `rex` subprocess; all parsing and file writing stays in
-   the main domain, since Str keeps global match state. *)
-let start_snapshot_scripts hosts =
-  let run_in_parallel = List.length hosts > 1 in
-  List.map
-    (fun host ->
-      let started_at = Unix.gettimeofday () in
-      let wait_for_result =
-        if run_in_parallel then
-          let domain = Domain.spawn (fun () -> run_snapshot_script host) in
-          fun () -> Domain.join domain
-        else fun () -> run_snapshot_script host
-      in
-      (host, started_at, wait_for_result))
-    hosts
-
 let refresh_hosts hosts =
   Settings.make_directory_with_parents (Settings.previews_directory ());
   let previous_index =
@@ -197,11 +187,16 @@ let refresh_hosts hosts =
   (* Until a host reports in, show what we had for it. *)
   let snapshots = ref (List.map (fun host -> (host, previous_snapshot_of_host host)) hosts) in
   let publish () =
-    Cache_index.save_index { Cache_index.hosts = !snapshots; written_at = Unix.gettimeofday () }
+    Cache_index.save_index { Cache_index.hosts = !snapshots; written_at = Unix.gettimeofday () };
+    Refresh_lock.keep_lock_fresh ()
   in
-  List.iter
-    (fun (host, started_at, wait_for_result) ->
-      let result = wait_for_result () in
+  let started_at = Unix.gettimeofday () in
+  (* Each host is published as soon as its snapshot arrives, so the fast ones show first. *)
+  Process.run_all ~timeout_seconds:Settings.host_snapshot_timeout_seconds
+    (List.map
+       (fun host -> (host, Rex_cli.rex_executable_path (), snapshot_script_arguments host))
+       hosts)
+    ~on_finished:(fun host result ->
       let snapshot =
         host_snapshot_of_script_result ~previous:(previous_snapshot_of_host host) host result
       in
@@ -213,11 +208,28 @@ let refresh_hosts hosts =
           (fun (listed_host, listed_snapshot) ->
             if listed_host = host then (host, snapshot) else (listed_host, listed_snapshot))
           !snapshots;
-      (* Hosts are joined in order and local comes first, so it shows up fastest. *)
-      publish ())
-    (start_snapshot_scripts hosts)
+      publish ());
+  !snapshots
+
+(* Previews of tabs that are gone, or of hosts no longer configured, would pile up. *)
+let delete_previews_not_in snapshots =
+  let kept = Hashtbl.create 64 in
+  List.iter
+    (fun (_, snapshot) ->
+      List.iter
+        (fun (tab : Tab.t) -> Hashtbl.replace kept (Filename.basename tab.preview_path) ())
+        snapshot.Cache_index.tabs)
+    snapshots;
+  let directory = Settings.previews_directory () in
+  Array.iter
+    (fun name ->
+      if Filename.check_suffix name ".html" && not (Hashtbl.mem kept name) then
+        try Sys.remove (Filename.concat directory name) with Sys_error _ -> ())
+    (try Sys.readdir directory with Sys_error _ -> [||])
 
 let refresh_all_hosts () =
-  Fun.protect ~finally:Refresh_lock.release_lock (fun () ->
-      Program_icon.ensure_icons_extracted ();
-      refresh_hosts (configured_hosts ()))
+  if Refresh_lock.claim_lock_for_this_process () then
+    Fun.protect ~finally:Refresh_lock.release_lock (fun () ->
+        Program_icon.ensure_icons_extracted ();
+        delete_previews_not_in (refresh_hosts (configured_hosts ())))
+  else Activity_log.log_line "refresh skipped: another refresh is running"

@@ -150,7 +150,7 @@ let new_session_item query : Yojson.Safe.t =
 let current_index () =
   match Cache_index.load_index () with
   | None ->
-      Refresh.refresh_hosts [ Host.Local ];
+      ignore (Refresh.refresh_hosts [ Host.Local ]);
       Refresh_lock.spawn_detached_refresh ();
       Option.value (Cache_index.load_index ()) ~default:{ Cache_index.hosts = []; written_at = 0. }
   | Some index ->
@@ -171,7 +171,9 @@ let alfred_response_of_query query : Yojson.Safe.t =
   let tab_items = List.map (alfred_item_of_tab ~label_is_shared) (ranked_tabs ~query tabs) in
   let query_is_blank = Fuzzy_match.query_is_blank query in
   let trailing_items =
-    if not query_is_blank then [ new_session_item query ]
+    if not query_is_blank then
+      if Tab_action.is_valid_session_name (String.trim query) then [ new_session_item query ]
+      else []
     else if tab_items = [] then
       [ unselectable_item ~title:"No Rex tabs found" ~subtitle:"Type a name to create a session" ]
     else []

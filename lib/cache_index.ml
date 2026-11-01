@@ -64,9 +64,10 @@ let index_of_json json =
   { hosts = List.map host_snapshot_of_json (Tab.list_field "hosts" json); written_at }
 
 let load_index () =
-  match Yojson.Safe.from_file (Settings.index_path ()) with
-  | json -> Some (index_of_json json)
-  | exception (Sys_error _ | Yojson.Json_error _) -> None
+  match index_of_json (Yojson.Safe.from_file (Settings.index_path ())) with
+  | index -> Some index
+  (* A damaged index is as good as none: the picker rebuilds it. *)
+  | exception (Sys_error _ | Yojson.Json_error _ | Yojson.Safe.Util.Type_error _) -> None
 
 (* Write to a temporary file and rename, so a reader never sees half an index. *)
 let write_file_atomically path contents =
