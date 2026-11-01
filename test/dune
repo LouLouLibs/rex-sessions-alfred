@@ -1,3 +1,8 @@
 (test
  (name test_rex_sessions)
  (libraries rex_sessions))
+
+(rule
+ (alias runtest)
+ (deps test_snapshot.lua ../rex-sessions/snapshot.lua)
+ (action (run lua %{dep:test_snapshot.lua} %{dep:../rex-sessions/snapshot.lua})))

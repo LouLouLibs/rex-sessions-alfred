@@ -3,27 +3,40 @@
    whole scrollbacks, and no host should wait for a slower one. *)
 
 let remote_hosts_of_hosts_json json =
-  List.filter_map
+  let invalid value =
+    raise (Yojson.Safe.Util.Type_error ("expected a host list with nonempty labels", value))
+  in
+  let entries =
+    match Yojson.Safe.Util.member "hosts" json with
+    | `List entries -> entries
+    | value -> invalid value
+  in
+  List.map
     (fun entry ->
       match Yojson.Safe.Util.(entry |> member "host" |> member "label") with
-      | `String label when label <> "" -> Some (Host.Remote label)
-      | _ -> None
-      | exception Yojson.Safe.Util.Type_error _ -> None)
-    (Tab.list_field "hosts" json)
+      | `String label when label <> "" -> Host.Remote label
+      | value -> invalid value)
+    entries
 
 let configured_hosts () =
   let result = Rex_cli.run_rex Host.Local [ "hosts"; "--json" ] in
-  let remote_hosts =
-    if Process.succeeded result then
-      match Yojson.Safe.from_string result.stdout with
-      | json -> remote_hosts_of_hosts_json json
-      | exception Yojson.Json_error _ -> []
-    else begin
-      Activity_log.log_line "rex hosts failed: %s" (Rex_cli.error_message_of_result result);
-      []
-    end
-  in
-  Host.Local :: remote_hosts
+  if Process.succeeded result then
+    try Ok (Host.Local :: remote_hosts_of_hosts_json (Yojson.Safe.from_string result.stdout))
+    with Yojson.Json_error message | Yojson.Safe.Util.Type_error (message, _) ->
+      Error ("unreadable host list: " ^ message)
+  else Error (Rex_cli.error_message_of_result result)
+
+let hosts_to_refresh () =
+  match configured_hosts () with
+  | Ok hosts -> hosts
+  | Error message ->
+      Activity_log.log_line "rex hosts failed; retaining cached hosts: %s" message;
+      let cached_hosts =
+        match Cache_index.load_index () with
+        | None -> []
+        | Some index -> List.map fst index.hosts
+      in
+      Host.Local :: List.filter (fun host -> host <> Host.Local) cached_hosts
 
 let snapshot_script_arguments host =
   Rex_cli.rex_arguments host
@@ -231,5 +244,5 @@ let refresh_all_hosts () =
   if Refresh_lock.claim_lock_for_this_process () then
     Fun.protect ~finally:Refresh_lock.release_lock (fun () ->
         Program_icon.ensure_icons_extracted ();
-        delete_previews_not_in (refresh_hosts (configured_hosts ())))
+        delete_previews_not_in (refresh_hosts (hosts_to_refresh ())))
   else Activity_log.log_line "refresh skipped: another refresh is running"

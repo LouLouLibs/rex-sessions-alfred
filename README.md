@@ -69,7 +69,8 @@ These are workflow variables you set in Alfred's workflow configuration:
 ## Build
 
 You need OCaml 5 with `dune`, `yojson` and `str` (for example through opam), plus the
-Xcode command-line tools for `swiftc`.
+Xcode command-line tools for `swiftc`. The snapshot tests also need Lua
+(`brew install lua`).
 
 ```sh
 ./build.sh   # builds, runs the tests, writes dist/Rex-Sessions.alfredworkflow

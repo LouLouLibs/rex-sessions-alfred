@@ -44,6 +44,7 @@ type running = {
   stdout_buffer : Buffer.t;
   stderr_buffer : Buffer.t;
   mutable open_pipes : (Unix.file_descr * Buffer.t) list;
+  mutable exit_status : Unix.process_status option;
 }
 
 let spawn_failure program message =
@@ -77,13 +78,29 @@ let spawn ~timeout_seconds ~stdin_text program arguments =
           stdout_buffer;
           stderr_buffer;
           open_pipes = [ (stdout_read, stdout_buffer); (stderr_read, stderr_buffer) ];
+          exit_status = None;
         }
 
+let poll_exit running =
+  if running.exit_status = None then
+    try
+      match Unix.waitpid [ Unix.WNOHANG ] running.pid with
+      | 0, _ -> ()
+      | _, status -> running.exit_status <- Some status
+    with Unix.Unix_error (Unix.EINTR, _, _) -> ()
+
+let completed running = running.open_pipes = [] && running.exit_status <> None
+
 let finish ~timed_out running =
-  if timed_out then (try Unix.kill running.pid Sys.sigkill with Unix.Unix_error _ -> ());
+  if timed_out && running.exit_status = None then
+    (try Unix.kill running.pid Sys.sigkill with Unix.Unix_error _ -> ());
   List.iter (fun (fd, _) -> close_ignoring_errors fd) running.open_pipes;
   running.open_pipes <- [];
-  let status = wait_for_exit_status running.pid in
+  let status =
+    match running.exit_status with
+    | Some status -> status
+    | None -> wait_for_exit_status running.pid
+  in
   {
     exit_code = (if timed_out then 124 else exit_code_of_status status);
     stdout = Buffer.contents running.stdout_buffer;
@@ -107,15 +124,16 @@ let run_all ?(timeout_seconds = 10.) ?(stdin_text = "") jobs ~on_finished =
   in
   let rec loop active =
     if active <> [] then begin
+      List.iter (fun (_, running) -> poll_exit running) active;
       let now = Unix.gettimeofday () in
       let finished, still_running =
         List.partition
-          (fun (_, running) -> running.open_pipes = [] || running.deadline <= now)
+          (fun (_, running) -> completed running || running.deadline <= now)
           active
       in
       List.iter
         (fun (key, running) ->
-          on_finished key (finish ~timed_out:(running.open_pipes <> []) running))
+          on_finished key (finish ~timed_out:(not (completed running)) running))
         finished;
       if still_running <> [] then begin
         let earliest_deadline =
@@ -125,7 +143,9 @@ let run_all ?(timeout_seconds = 10.) ?(stdin_text = "") jobs ~on_finished =
         let open_fds =
           List.concat_map (fun (_, running) -> List.map fst running.open_pipes) still_running
         in
-        (match Unix.select open_fds [] [] (Float.max 0. (earliest_deadline -. now)) with
+        (* Pipe EOF does not imply exit. Poll child status even with no pipes left. *)
+        let wait = Float.min 0.05 (Float.max 0. (earliest_deadline -. Unix.gettimeofday ())) in
+        (match Unix.select open_fds [] [] wait with
         | exception Unix.Unix_error (Unix.EINTR, _, _) -> ()
         | ready, _, _ ->
             List.iter

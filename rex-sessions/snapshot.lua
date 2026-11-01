@@ -5,11 +5,19 @@
 --     programs = [{focused, argv0, name, invoked_path}]}]}]}
 local tail = tonumber(rex.args.tail) or 70
 
--- rex.call returns nil, err on failure; a missing tab or preview is fine.
+-- Optional pane metadata may disappear while taking a snapshot.
 local function try(method, args)
   local ok, res = pcall(rex.call, method, args)
   if ok then return res end
   return nil
+end
+
+-- A failed inventory is not an empty inventory. Let the caller retain its cache.
+local function required(method, args)
+  local res, err = rex.call(method, args)
+  if err ~= nil then error(method .. ": " .. tostring(err)) end
+  if res == nil then error(method .. ": no result") end
+  return res
 end
 
 -- Keep only the last `tail` lines; rex.json can't ship megabytes of scrollback.
@@ -37,11 +45,11 @@ local function foreground_program(session_id, block)
 end
 
 local out = {}
-local list = try("session.list", {}) or {sessions = {}}
+local list = required("session.list", {})
 for _, s in ipairs(list.sessions or {}) do
   -- A script may only read sessions it is attached to.
-  try("session.attach", {session_id = s.session_id})
-  local view = try("session.view", {session_id = s.session_id})
+  required("session.attach", {session_id = s.session_id})
+  local view = required("session.view", {session_id = s.session_id})
   local sess = {
     session_id = s.session_id,
     label = s.label or "",
