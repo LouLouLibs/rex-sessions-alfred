@@ -1,0 +1,182 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>bundleid</key>
+	<string>com.loulou.rex-sessions</string>
+	<key>category</key>
+	<string>Tools</string>
+	<key>connections</key>
+	<dict>
+		<key>820616CE-0052-4C22-8DBB-EBD7EBAA7FD9</key>
+		<array>
+			<dict>
+				<key>destinationuid</key>
+				<string>34C366A1-84BA-42E3-89C3-1675A7DF8AB2</string>
+				<key>modifiers</key>
+				<integer>0</integer>
+				<key>modifiersubtext</key>
+				<string></string>
+				<key>vitoclose</key>
+				<false/>
+			</dict>
+			<dict>
+				<key>destinationuid</key>
+				<string>34C366A1-84BA-42E3-89C3-1675A7DF8AB2</string>
+				<key>modifiers</key>
+				<integer>1048576</integer>
+				<key>modifiersubtext</key>
+				<string></string>
+				<key>vitoclose</key>
+				<false/>
+			</dict>
+			<dict>
+				<key>destinationuid</key>
+				<string>34C366A1-84BA-42E3-89C3-1675A7DF8AB2</string>
+				<key>modifiers</key>
+				<integer>524288</integer>
+				<key>modifiersubtext</key>
+				<string></string>
+				<key>vitoclose</key>
+				<false/>
+			</dict>
+		</array>
+	</dict>
+	<key>createdby</key>
+	<string>loulou</string>
+	<key>description</key>
+	<string>Fuzzy-pick Rex tabs on every host, with Quick Look previews</string>
+	<key>disabled</key>
+	<false/>
+	<key>name</key>
+	<string>Rex Sessions</string>
+	<key>objects</key>
+	<array>
+		<dict>
+			<key>config</key>
+			<dict>
+				<key>alfredfiltersresults</key>
+				<false/>
+				<key>argumenttype</key>
+				<integer>1</integer>
+				<key>escaping</key>
+				<integer>102</integer>
+				<key>keyword</key>
+				<string>rx</string>
+				<key>queuedelaycustom</key>
+				<integer>3</integer>
+				<key>queuedelayimmediatelyinitially</key>
+				<true/>
+				<key>queuedelaymode</key>
+				<integer>0</integer>
+				<key>queuemode</key>
+				<integer>1</integer>
+				<key>runningsubtext</key>
+				<string>Loading Rex tabs…</string>
+				<key>script</key>
+				<string>./rex_sessions_alfred filter "$1"</string>
+				<key>scriptargtype</key>
+				<integer>1</integer>
+				<key>scriptfile</key>
+				<string></string>
+				<key>subtext</key>
+				<string>Jump to a Rex tab on any host (⇧ to preview)</string>
+				<key>title</key>
+				<string>Rex Sessions</string>
+				<key>type</key>
+				<integer>0</integer>
+				<key>withspace</key>
+				<true/>
+			</dict>
+			<key>type</key>
+			<string>alfred.workflow.input.scriptfilter</string>
+			<key>uid</key>
+			<string>820616CE-0052-4C22-8DBB-EBD7EBAA7FD9</string>
+			<key>version</key>
+			<integer>3</integer>
+		</dict>
+		<dict>
+			<key>config</key>
+			<dict>
+				<key>concurrently</key>
+				<false/>
+				<key>escaping</key>
+				<integer>102</integer>
+				<key>script</key>
+				<string>./rex_sessions_alfred run "$1"</string>
+				<key>scriptargtype</key>
+				<integer>1</integer>
+				<key>scriptfile</key>
+				<string></string>
+				<key>type</key>
+				<integer>0</integer>
+			</dict>
+			<key>type</key>
+			<string>alfred.workflow.action.script</string>
+			<key>uid</key>
+			<string>34C366A1-84BA-42E3-89C3-1675A7DF8AB2</string>
+			<key>version</key>
+			<integer>2</integer>
+		</dict>
+	</array>
+	<key>readme</key>
+	<string>Keyword: rx [query]
+
+Lists every tab of every Rex session, on this Mac and on each host in `rex hosts`.
+Matches session, tab name, terminal title, directory and host; all words must match.
+
+↵  jump to the tab in Rex
+⇧ / ⌘Y  Quick Look preview of the tab's screen
+⌘↵  close the tab (asks first)
+⌥↵  copy the session and tab IDs
+Last row: ↵ creates a local session named after the query.
+
+Remote hosts take a few seconds to snapshot, so results come from a cache that
+refreshes in the background whenever it's older than refresh_seconds.
+
+Variables:
+  rex_path         path to the rex CLI (blank = Rex's bundled copy)
+  rex_app          path to Rex.app for icons (blank = look in /Applications)
+  preview_lines    lines of scrollback in the preview (default 70)
+  refresh_seconds  cache age that triggers a refresh (default 5)
+  icon_aliases     extra program=icon pairs, e.g. "vm-launcher=claude, ipy=python";
+                   icon names are Rex's glyphs (claude, neovim, python, terminal, ...)
+
+Each result shows Rex's icon for the program in the tab's focused pane. The icons are
+rendered from your installed Rex app on first run, and again after Rex updates.</string>
+	<key>uidata</key>
+	<dict>
+		<key>820616CE-0052-4C22-8DBB-EBD7EBAA7FD9</key>
+		<dict>
+			<key>xpos</key>
+			<real>40</real>
+			<key>ypos</key>
+			<real>40</real>
+		</dict>
+		<key>34C366A1-84BA-42E3-89C3-1675A7DF8AB2</key>
+		<dict>
+			<key>xpos</key>
+			<real>300</real>
+			<key>ypos</key>
+			<real>40</real>
+		</dict>
+	</dict>
+	<key>variables</key>
+	<dict>
+		<key>icon_aliases</key>
+		<string>vm-launcher=claude</string>
+		<key>rex_app</key>
+		<string></string>
+		<key>refresh_seconds</key>
+		<string>5</string>
+		<key>preview_lines</key>
+		<string>70</string>
+		<key>rex_path</key>
+		<string></string>
+	</dict>
+	<key>version</key>
+	<string>0.5.0</string>
+	<key>webaddress</key>
+	<string>https://github.com/LouLouLibs/rex-sessions-alfred</string>
+</dict>
+</plist>

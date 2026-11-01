@@ -1,0 +1,3 @@
+(executable
+ (name rex_sessions_alfred)
+ (libraries rex_sessions))
