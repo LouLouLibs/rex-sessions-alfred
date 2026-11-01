@@ -1,0 +1,60 @@
+# Build the workflow bundle on Apple silicon and attach it to a release when a
+# version tag (v0.2.0, ...) is pushed. The tag must match the version in info.plist.
+# Run it by hand to build without releasing; the bundle is kept as a run artifact.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    # Rex only runs on Apple silicon, so the bundle is arm64 only.
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check the tag matches info.plist
+        if: github.ref_type == 'tag'
+        run: |
+          plist_version=$(plutil -extract version raw rex-sessions/info.plist)
+          if [ "v$plist_version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::tag $GITHUB_REF_NAME but info.plist says $plist_version"
+            exit 1
+          fi
+
+      - uses: ocaml/setup-ocaml@v3
+        with:
+          ocaml-compiler: "5.4"
+
+      - name: Install OCaml dependencies
+        run: opam install --yes dune yojson
+
+      - name: Build and test
+        run: opam exec -- ./build.sh
+
+      - name: Check the binaries are arm64
+        run: |
+          for binary in _build/workflow/rex_sessions_alfred _build/workflow/extract_rex_icons; do
+            file "$binary"
+            file "$binary" | grep -q "arm64"
+          done
+
+      - name: Keep the bundle (manual runs)
+        if: github.ref_type != 'tag'
+        uses: actions/upload-artifact@v7
+        with:
+          name: Rex-Sessions.alfredworkflow
+          path: dist/Rex-Sessions.alfredworkflow
+
+      - name: Publish the release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/Rex-Sessions.alfredworkflow \
+            --title "$GITHUB_REF_NAME" --generate-notes

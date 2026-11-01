@@ -75,6 +75,10 @@ Xcode command-line tools for `swiftc`.
 ./build.sh   # builds, runs the tests, writes dist/Rex-Sessions.alfredworkflow
 ```
 
+To release, set `version` in `rex-sessions/info.plist`, commit, and push a matching tag
+(`git tag v0.2.0 && git push origin v0.2.0`). The Release action builds the bundle on
+Apple silicon and publishes it.
+
 ## License
 
 MIT
